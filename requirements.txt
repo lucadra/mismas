@@ -1,0 +1,16 @@
+beautifulsoup4==4.11.1
+eel==0.14.0
+enquiries==0.1.0
+google_api_python_client==2.65.0
+isodate==0.6.1
+matplotlib==3.6.1
+numpy==1.23.2
+pandas==1.4.3
+Pillow==9.2.0
+protobuf==4.21.8
+pytube==12.1.0
+rectpack==0.2.2
+requests==2.22.0
+spacy==3.4.2
+summarizer==0.0.7
+tqdm==4.64.0
