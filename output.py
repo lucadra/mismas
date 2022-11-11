@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from metavideo import get_metagrid
 from object_tracking_supercut import interpolate_missing_data, extract_object_thumbs, extract_masked_object_clips, \
-    merge_with_chromakey, extract_obj_gifs
+    merge_with_chromakey, extract_obj_gifs_parallel
 from utils import uniquify, ensure_dir, ensure_coords, find_video_by_id
 
 
@@ -239,7 +239,7 @@ def extract_shots(_df: pd.DataFrame, in_dir: Path, out_dir: Path, text: str = Fa
         operation = subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if operation.returncode != 0:
             print(operation.stderr)
-            raise RuntimeError("Ué uagliù è succiesso nu guaio mentre tagliavo i video, liv 'a miezz "
+            raise RuntimeError("Ué uagliù è succiesso nu guaio mentre stev tagliann e' video, liv 'a miezz "
                                "'stderr=subprocess.DEVNULL' e vir nu poc ch'è succiess")
 
 
@@ -347,7 +347,7 @@ def extract_object_gifs(in_dir: Path, out_dir: Path, data: pd.DataFrame, key: li
     """
     data = data[data['object_name'].isin(key)]
     data = interpolate_missing_data(data)
-    extract_obj_gifs(in_dir, out_dir, data)
+    extract_obj_gifs_parallel(in_dir, out_dir, data)
     return None
 
 

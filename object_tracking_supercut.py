@@ -12,6 +12,7 @@ import pandas as pd
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
+from metavideo import get_min_thumbs_size_data, crop_thumbs_to_normalised_size
 from utils import ensure_coords, clean_user_input, find_video_by_id, find_longest_video, uniquify
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -273,10 +274,13 @@ def extract_obj_gifs(in_dir: Path, out_dir: Path, data: pd.DataFrame):
     out_dir.mkdir(parents=True, exist_ok=True)
     executor = concurrent.futures.ProcessPoolExecutor()
     pbar = tqdm(
-        total=len(data["object_id"].unique()), desc="Extracting object thumbnails"
+        total=len(data["object_id"].unique()), desc="Extracting object thumbnails", smoothing=0
     )
+
+    object_groups = data.groupby("object_id")
+
     for object_id in data["object_id"].unique():
-        object_data = data.groupby("object_id").get_group(object_id)
+        object_data = object_groups.get_group(object_id)
         object_name = object_data["object_name"].iat[0]
         video_path = find_video_by_id(object_data["id"].iat[0], in_dir)
         timestamps = object_data["time_seconds"].to_numpy()
@@ -292,7 +296,7 @@ def extract_obj_gifs(in_dir: Path, out_dir: Path, data: pd.DataFrame):
             for timestamp in timestamps
         ]
         concurrent.futures.wait(futures)
-
+        ## make the code below run in parallel
         for _, row in object_data.iterrows():
             in_path = Path(
                 frame_path, f'{row["object_name"]}_{row["object_id"]}_[{row["time_seconds"]:1.3f}].jpg',
@@ -313,17 +317,85 @@ def extract_obj_gifs(in_dir: Path, out_dir: Path, data: pd.DataFrame):
                 ['ffmpeg', '-framerate', '12', '-i', f'{tmp_dir.name}/renamed/{row["object_id"]}_%04d.jpg', '-y',
                  f'{out_dir}/{row["object_id"]}.gif'],
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ## make the code above run in parallel
         pbar.update(1)
 
 
-def extract_confident_object_thumbs(in_dir: Path, out_dir: Path, data: pd.DataFrame):
+def extract_obj_gifs_parallel(in_dir: Path, out_dir: Path, data: pd.DataFrame):
     """
-    Extracts the object thumbnail with the highest confidence score given a key and a video
+    Extracts object gifs from the video frames.
     :param in_dir:
     :param out_dir:
     :param data:
     :return:
     """
+    tmp_dir = tempfile.TemporaryDirectory()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    executor = concurrent.futures.ProcessPoolExecutor()
+    pbar = tqdm(
+        total=len(data["object_id"].unique()), desc="Extracting object gifs", smoothing=0
+    )
+
+    object_groups = data.groupby("object_id")
+
+    for object_id in data["object_id"].unique():
+        object_data = object_groups.get_group(object_id)
+        object_name = object_data["object_name"].iat[0]
+        object_id = object_data["object_id"].iat[0]
+        video_path = find_video_by_id(object_data["id"].iat[0], in_dir)
+        timestamps = object_data["time_seconds"].to_numpy()
+
+        frame_path = Path(tmp_dir.name, 'frames')
+        thumb_path = Path(tmp_dir.name, 'thumbs')
+
+        frame_path.mkdir(parents=True, exist_ok=True)
+        thumb_path.mkdir(parents=True, exist_ok=True)
+
+        futures = [
+            executor.submit(extract_frame, video_path, frame_path, timestamp, object_id, object_name)
+            for timestamp in timestamps
+        ]
+        concurrent.futures.wait(futures)
+
+        futures = [
+            executor.submit(
+                crop_frame,
+                Path(frame_path, f'{row["object_name"]}_{row["object_id"]}_[{row["time_seconds"]:1.3f}].jpg'),
+                thumb_path,
+                row["left"],
+                row["top"],
+                row["right"],
+                row["bottom"],
+            )
+            for _, row in object_data.iterrows()
+        ]
+        concurrent.futures.wait(futures)
+
+        size_data = get_min_thumbs_size_data(thumb_path)
+        crop_thumbs_to_normalised_size(thumb_path, thumb_path, size_data)
+
+        futures = [
+            executor.submit(
+                merge_to_gif, out_dir, row, thumb_path, tmp_dir
+            ) for _, row in object_data.iterrows()
+        ]
+        concurrent.futures.wait(futures)
+
+        subprocess.run(
+            ['ffmpeg', '-framerate', '12', '-i', f'{tmp_dir.name}/renamed/{object_id}_%04d.jpg', '-y',
+             f'{out_dir}/{object_id}.gif'],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        pbar.update(1)
+
+
+def merge_to_gif(out_dir, row, thumb_path, tmp_dir):
+    thumb_list = list(thumb_path.glob(f'{row["object_name"]}_{row["object_id"]}*.jpg'))
+    # sort the list by timestamp
+    thumb_list.sort(key=lambda x: float(x.stem.split('[')[-1].split(']')[0]))
+    # copy the files to another dir in the tmp dir and rename as object_id_0001.jpg, object_id_0002.jpg, etc.
+    Path(tmp_dir.name, 'renamed').mkdir(parents=True, exist_ok=True)
+    for i, thumb in enumerate(thumb_list):
+        shutil.copy(thumb, Path(tmp_dir.name, 'renamed', f'{row["object_id"]}_{i:04d}.jpg'))
 
 
 def reject_outliers(data, m=2.0) -> List[int]:
