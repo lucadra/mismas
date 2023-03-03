@@ -1,5 +1,4 @@
 import concurrent.futures
-import contextlib
 import os
 from pathlib import Path
 from typing import List
@@ -8,16 +7,16 @@ import enquiries
 import isodate
 import pandas as pd
 from googleapiclient.discovery import build
-from pytube import YouTube, exceptions
+from pytube import YouTube
 from tqdm import tqdm
 
-from utils import seconds_to_string
+from utils import sanitize_video_title, seconds_to_string
 
 
 def find_txt_files(_dir, prompt):
     txt_files = [file for file in os.listdir(_dir) if file.endswith(".txt")]
     if not txt_files:
-        raise Exception("No txt files found")
+        raise FileNotFoundError("No txt files found")
     if len(txt_files) == 1:
         file = txt_files[0]
     elif len(txt_files) > 1:
@@ -31,7 +30,7 @@ def parse_txt(_filepath):
         lines = [x.strip() for x in lines]
         f.close()
         if not lines:
-            raise Exception("No URLs found in txt file")
+            raise ValueError("No URLs found in txt file")
     return lines
 
 
@@ -159,6 +158,35 @@ def search_channel_id(_query: str) -> str:
     return selected_channel[1]
 
 
+##  def download_video(_id: str, _output_dir: str) -> str:
+##      """
+##      Downloads a video from a given ID
+##      :param _id: id of the video to download
+##      :param _output_dir: Directory where to save the video
+##      :return: Path of the downloaded video
+##      """
+##      yt = YouTube(f'https://www.youtube.com/watch?v={_id}')
+##      ## with contextlib.suppress(exceptions.LiveStreamError):
+##      yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first().download(
+##          _output_dir, filename=f'{yt.title}.mp4', filename_prefix=f"[{_id}]_", skip_existing=True)
+##      return os.path.join(_output_dir, f"[{_id}]_{yt.title}.mp4")
+
+
+##  def download_videos(_ids: List[str], output_dir: Path) -> None:
+##      """
+##      Downloads videos of videos from a given list of URLs
+##      :param output_dir: directory where to save the videos
+##      :param _ids: List of YouTube ids of the videos to download
+##      :return:
+##      """
+##      output_dir.mkdir(exist_ok=True)
+##      pbar = tqdm(total=len(_ids), desc="Downloading videos")
+##      with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+##          futures = [executor.submit(download_video, _id, output_dir.as_posix()) for _id in _ids]
+##          for _ in concurrent.futures.as_completed(futures):
+##              pbar.update(1)
+
+
 def download_video(_id: str, _output_dir: str) -> str:
     """
     Downloads a video from a given ID
@@ -166,11 +194,16 @@ def download_video(_id: str, _output_dir: str) -> str:
     :param _output_dir: Directory where to save the video
     :return: Path of the downloaded video
     """
-    yt = YouTube(f'https://www.youtube.com/watch?v={_id}')
-    with contextlib.suppress(exceptions.LiveStreamError):
+    try:
+        yt = YouTube(f'https://www.youtube.com/watch?v={_id}')
+        title = sanitize_video_title(yt.title)
+        path = Path(_output_dir) / f"[{_id}]_{title}.mp4"
         yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first().download(
-            _output_dir, filename=f'{yt.title}.mp4', filename_prefix=f"[{_id}]_", skip_existing=True)
-    return os.path.join(_output_dir, f"[{_id}]_{yt.title}.mp4")
+            _output_dir, filename=path.name, filename_prefix='', skip_existing=True)
+        return str(path)
+    except Exception as e:
+        print(f"Error downloading video {_id}: {e}")
+        return None
 
 
 def download_videos(_ids: List[str], output_dir: Path) -> None:
@@ -184,5 +217,7 @@ def download_videos(_ids: List[str], output_dir: Path) -> None:
     pbar = tqdm(total=len(_ids), desc="Downloading videos")
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(download_video, _id, output_dir.as_posix()) for _id in _ids]
-        for _ in concurrent.futures.as_completed(futures):
+        for future in concurrent.futures.as_completed(futures):
+            if future.result() is None:
+                print("Video not downloaded")
             pbar.update(1)

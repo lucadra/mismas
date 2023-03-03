@@ -3,12 +3,14 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import List
-
+from rectpack import newPacker
 import pandas as pd
 from PIL import Image
-from rectpack import newPacker
 
-from utils import find_longest_video, ensure_even
+from utils import ensure_even, find_longest_video
+
+
+## TODO: make this stuff great again with new rectpack algo from itematlas
 
 
 def get_min_thumbs_size_data(in_dir: Path) -> List[dict]:

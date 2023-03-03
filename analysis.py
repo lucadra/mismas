@@ -10,12 +10,10 @@ from google.cloud import videointelligence
 from google.protobuf.json_format import MessageToJson
 from tqdm import tqdm
 
-from most_replayed_scraper import get_playback_heatmarkers
-from utils import ensure_coords
-from utils import seconds_to_string, check_category, parse_id
+from playback_scraper import get_playback_heatmarkers
+from utils import check_category, ensure_coords, parse_id, seconds_to_string
 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'credentials/mismas-363214-7a6cbac454ec.json'
-
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] =  next(Path('credentials').glob('*.json'))
 
 class VideoIntelligenceRequest():
 
@@ -56,7 +54,7 @@ class VideoIntelligenceRequest():
         operation = self.client.annotate_video(
             request={"input_content": self.input_content, "features": features,
                      "video_context": video_context})
-        self.df = parse_word_data(json.loads(MessageToJson(operation.result()._pb)))
+        self.df = parse_word_data(json.loads(MessageToJson(operation.result(timeout=99999)._pb)))
         self.df.insert(0, 'id', self.id)
         return self.df
 
@@ -64,7 +62,7 @@ class VideoIntelligenceRequest():
         features = [videointelligence.Feature.OBJECT_TRACKING]
         operation = self.client.annotate_video(
             request={"input_content": self.input_content, "features": features})
-        self.df = parse_object_tracking_data(json.loads(MessageToJson(operation.result()._pb)))
+        self.df = parse_object_tracking_data(json.loads(MessageToJson(operation.result(timeout=99999)._pb)))
         self.df.insert(0, 'id', self.id)
         return self.df
 
@@ -144,15 +142,6 @@ def parse_word_data(_data: dict) -> pd.DataFrame:
     return pd.DataFrame(words, columns=['word', 'start', 'end', 'start_sec', 'end_sec', 'confidence'])
 
 
-def parse_transcript_data(_data: dict) -> str:
-    data = _data['annotationResults'][0]['speechTranscriptions']
-    transcriptions = [transcription['alternatives'][0] for transcription in data if
-                      transcription['alternatives'][0].get('words')]
-    transcript = [transcription['transcript'] for transcription in transcriptions]
-
-    return ''.join(transcript)
-
-
 def parse_object_tracking_data(data: dict) -> pd.DataFrame:
     """
     Parses the object tracking data from the Video Intelligence API
@@ -178,6 +167,15 @@ def parse_object_tracking_data(data: dict) -> pd.DataFrame:
     return pd.DataFrame(objects, columns=['object_id', 'object_name', 'time_seconds', 'left', 'top', 'right', 'bottom'])
 
 
+def parse_transcript_data(_data: dict) -> str:
+    data = _data['annotationResults'][0]['speechTranscriptions']
+    transcriptions = [transcription['alternatives'][0] for transcription in data if
+                      transcription['alternatives'][0].get('words')]
+    transcript = [transcription['transcript'] for transcription in transcriptions]
+
+    return ''.join(transcript)
+
+
 def batch_annotate_from_ids(ids: List[str], service: str, project_directory: Path) -> pd.DataFrame:
     """
     Annotates all videos which ids are provided and returns a dataframe with the annotations
@@ -191,10 +189,14 @@ def batch_annotate_from_ids(ids: List[str], service: str, project_directory: Pat
     out_dir.mkdir(parents=True, exist_ok=True)
     video_files = [path for path in original_videos_dir.glob('*.mp4') if parse_id(path.as_posix()) in ids]
     video_client = videointelligence.VideoIntelligenceServiceClient()
+    
     for path in tqdm(video_files, desc=f"Getting {service} data for videos in {Path(project_directory).name}"):
+        csv_path = Path(out_dir, f'{path.stem}.csv').resolve()
+        if csv_path.is_file():
+            continue
         r = VideoIntelligenceRequest(video_client, path)
         data = getattr(r, service)()
-        data.to_csv(Path(out_dir, f'{path.stem}.csv').resolve(), index=False)
+        data.to_csv(csv_path, index=False)
 
     merged_df = pd.concat(
         [pd.read_csv(path.resolve().as_posix()) for path in out_dir.glob('*.csv') if parse_id(path.stem) in ids])
@@ -202,32 +204,22 @@ def batch_annotate_from_ids(ids: List[str], service: str, project_directory: Pat
     return merged_df
 
 
-def most_replayed(video_ids, project_dir) -> None:
+def most_replayed(video_ids: List, project_dir: Path) -> None:
     """
     Finds the most replayed parts of the videos and saves them to a csv file
-    :param video_ids:
-    :param project_dir:
+    :param video_ids: List of YouTube video ids
+    :param project_dir: Directory where the output csv file will be saved
     :return: saves a csv file with the most replayed parts of the videos
     """
-    out_dir = project_dir / 'data' / 'playback'
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for _id in tqdm(video_ids, desc='Getting most playback data'):
-        df = get_playback_heatmarkers(_id)
-        if df is not None:
-            df.to_csv(Path(out_dir, f'{_id}.csv').resolve(), index=False)
-    merged_df = pd.concat([pd.read_csv(path.resolve().as_posix()) for path in out_dir.glob('*.csv')])
-    merged_df.to_csv(Path(out_dir, 'merged.csv').resolve(), index=False)
-
-
-def add_cluster_data(cluster_folder: Path, df: pd.DataFrame) -> pd.DataFrame:
-    subdirs = [x for x in cluster_folder.iterdir() if x.is_dir()]
-    for subdir in subdirs:
-        cluster_name = subdir.name
-        for path in subdir.glob('*.gif'):
-            _id = parse_id(path.stem)
-            df.loc[df['object_id'] == _id, 'cluster'] = cluster_name
-    return df
-
-
-
-
+    playback_data_dir = project_dir / 'data' / 'playback'
+    playback_data_dir.mkdir(parents=True, exist_ok=True)
+    video_heatmarkers = {}
+    for video_id in tqdm(video_ids, desc='Getting playback data'):
+        heatmarkers = get_playback_heatmarkers(video_id)
+        if heatmarkers is not None:
+            video_heatmarkers[video_id] = heatmarkers
+            heatmarkers.to_csv(Path(playback_data_dir, f'{video_id}.csv').resolve(), index=False)
+    
+    if video_heatmarkers:
+        merged_heatmarkers = pd.concat(video_heatmarkers.values())
+        merged_heatmarkers.to_csv(Path(playback_data_dir, 'merged.csv').resolve(), index=False)

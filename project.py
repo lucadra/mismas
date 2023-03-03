@@ -8,59 +8,51 @@ import pandas as pd
 import analysis
 import download
 import output
+from itematlas import serve_itematlas
+from momentmap import serve_momentmap
+from reelchart import serve_reelchart
 from utils import parse_id
 
 
 def ensure_mismas() -> Path:
-    """Ensure that the root directory for Mismas exists"""
-    home_dir = Path.home().as_posix()
-    mismas_dir = Path(home_dir, 'mismas')
+    home_dir = Path.home()
+    mismas_dir = home_dir / 'mismas'
     mismas_dir.mkdir(exist_ok=True)
     return mismas_dir
 
 
 def new_project_handler(mismas_dir: Path) -> Path:
-    """
-    Create a new project folder
-    :param mismas_dir: The root directory for Mismas
-    :return project_dir: The selected project directory
-    """
     while True:
         project_name = input('Enter project name: ')
-        project_dir = Path(mismas_dir, project_name)
+        if not project_name or '/' in project_name:
+            print("Invalid project name. It can't be empty or contain slashes.")
+            continue
 
+        project_dir = mismas_dir / project_name
         try:
             project_dir.mkdir()
-            print(f'Created project directory: {project_dir}')
             break
         except FileExistsError:
             print('There is already a project with that name')
+
+    print(f'Created project directory: {project_dir}')
     return project_dir
 
 
 def existing_project_handler(mismas_dir: Path) -> Path:
-    """
-    Select an existing project folder
-    :param mismas_dir: The root directory for Mismas
-    :return project_dir: The selected project directory
-    """
-    subdirs = Path(mismas_dir).glob('*/')
-    selected = enquiries.choose(prompt='Select project', choices=[sdir.stem for sdir in subdirs], multi=False)
-    return Path(mismas_dir, selected)
+    subdirs = [sdir.stem for sdir in mismas_dir.glob('*/')]
+    selected = enquiries.choose(prompt='Select project', choices=subdirs, multi=False)
+    return mismas_dir / selected
 
 
-def project_dir_handler(mismas_dir):
-    choice = enquiries.choose(prompt='What do you want to do?',
-                              choices=['Load existing project', 'Create new project'],
-                              multi=False)
+def project_dir_handler(mismas_dir: Path) -> Path:
+    choice_to_handler = {
+        'Create new project': new_project_handler,
+        'Load existing project': existing_project_handler,
+    }
 
-    if choice == 'Create new project':
-        project_folder = new_project_handler(mismas_dir)
-    elif choice == 'Load existing project':
-        project_folder = existing_project_handler(mismas_dir)
-    else:
-        raise ValueError("Me uagliù ch'amma a'fà?")
-    return project_folder
+    choice = enquiries.choose(prompt='What do you want to do?', choices=choice_to_handler.keys(), multi=False)
+    return choice_to_handler[choice](mismas_dir)
 
 
 def find_channel_uploads() -> List[str]:
@@ -94,8 +86,6 @@ def yt_video_selector(project_dir: Path) -> List[str]:
         file_path = enquiries.choose(prompt='Select file', choices=[f.name for f in Path(project_dir).glob('*.csv')])
         video_df = pd.read_csv(Path(project_dir, file_path).as_posix())
         video_ids = video_df['id'].tolist()
-    else:
-        raise ValueError('Invalid action')
 
     return video_ids
 
@@ -129,8 +119,7 @@ def analysis_handler(project_dir: Path) -> None:
                                        'Transcription',
                                        'Object Tracking',
                                        'Shot Change Detection',
-                                       'Most Replayed',
-                                       'BERT Summarization'])
+                                       'Youtube Playback Data'])
 
     if choice == 'Label Detection':
         analysis.batch_annotate_from_ids(video_ids, 'label_detection', project_dir)
@@ -142,10 +131,9 @@ def analysis_handler(project_dir: Path) -> None:
         analysis.batch_annotate_from_ids(video_ids, 'object_tracking', project_dir)
     elif choice == 'Shot Change Detection':
         analysis.batch_annotate_from_ids(video_ids, 'shot_change_detection', project_dir)
-    elif choice == 'Most Replayed':
+    elif choice == 'Youtube Playback Data':
         analysis.most_replayed(video_ids, project_dir)
-    elif choice == 'BERT Summarization':
-        print('Not implemented yet')
+
 
 
 def report_handler(project_dir: Path) -> None:
@@ -163,16 +151,23 @@ def download_handler(project_dir: Path) -> None:
     print('Videos saved to: ', download_folder.as_posix())
 
 
+## TODO: Ask god forgiveness for this abomination
+
 def edit_handler(project_dir: Path) -> None:
     choice = enquiries.choose(prompt='What do you want to do?',
                               choices=['Extract Shots',
                                        'Merge Shots',
                                        'Render Heatmap',
+                                       'Render Traces',
                                        'Extract Object Thumbnails',
                                        'Extract Object Gifs',
                                        'Extract Masked Clips',
                                        'Generate Object Tracking Metavideo',
-                                       'Generate Object Tracking Mosaic'])
+                                       'Generate Object Tracking Mosaic',
+                                       'Explore Object Tracking data',
+                                       'Explore Speech Transcription data',
+                                       'Explore Playback Data data',
+                                       ])
 
     if choice == 'Extract Shots':
         data_path_parent = enquiries.choose(prompt='Select dir with shot data',
@@ -193,7 +188,7 @@ def edit_handler(project_dir: Path) -> None:
                 data.sort_values('count', ascending=False)
                 key = enquiries.choose(prompt="Select word to extract",
                                        choices=data['entity'].unique().tolist(),
-                                       multi=True)  # input('Enter entity to select: ')
+                                       multi=True) 
                 threshold = input('Enter threshold: ')
                 search_categories = enquiries.confirm(prompt='Search in categories as well?')
                 padding_before = input('Seconds before: ')
@@ -219,7 +214,7 @@ def edit_handler(project_dir: Path) -> None:
 
             elif data_path.parent.name == 'object_tracking':
                 key = enquiries.choose(prompt='Select object to extract',
-                                       choices=data['entity'].unique().tolist())  # input('Enter object to select: ')
+                                       choices=data['entity'].unique().tolist())
                 shot_data = data[data['entity'] == key]
                 threshold = input('Enter threshold: ')
                 shot_data = shot_data[shot_data['confidence'] > float(threshold)]
@@ -260,9 +255,20 @@ def edit_handler(project_dir: Path) -> None:
         data = pd.read_csv(data_path)
         key = enquiries.choose(prompt='Select object to extract', multi=True,
                                choices=data['object_name'].value_counts().sort_values(ascending=False).index.tolist())
-        out_dir = project_dir / 'heatmap'
+        out_dir = project_dir / 'traces'
         out_dir.mkdir(exist_ok=True)
         output.render_heatmap(out_dir, data, key)
+
+    elif choice == 'Render Traces':
+        data_path = enquiries.choose(prompt='Select file with object tracking annotations',
+                                        choices=Path(project_dir, 'data', 'object_tracking').rglob('*.csv'),
+                                        multi=False)
+        data = pd.read_csv(data_path)
+        key = enquiries.choose(prompt='Select object to track', multi=True,
+                                 choices=data['object_name'].value_counts().sort_values(ascending=False).index.tolist())
+        out_dir = project_dir / 'traces'
+        out_dir.mkdir(exist_ok=True)
+        output.render_traces(out_dir, data, key)
 
     elif choice == 'Extract Object Thumbnails':
         data_path = enquiries.choose(prompt='Select file with object tracking annotations',
@@ -326,3 +332,12 @@ def edit_handler(project_dir: Path) -> None:
         out_dir = project_dir / 'mosaic'
         out_dir.mkdir(exist_ok=True)
         output.extract_object_metagrid(in_dir, out_dir, data, key)
+
+    elif choice == 'Explore Object Tracking data':
+        serve_itematlas(project_dir)
+
+    elif choice == 'Explore Speech Transctiption data':
+        serve_reelchart(project_dir)
+
+    elif choice == 'Explore Playback data':
+        serve_momentmap(project_dir)

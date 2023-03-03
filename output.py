@@ -10,9 +10,12 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 from metavideo import get_metagrid
-from object_tracking_supercut import interpolate_missing_data, extract_object_thumbs, extract_masked_object_clips, \
-    merge_with_chromakey, extract_obj_gifs_parallel
-from utils import uniquify, ensure_dir, ensure_coords, find_video_by_id
+from object_tracking_operations import (extract_masked_object_clips,
+                                        extract_obj_gifs_parallel,
+                                        extract_object_thumbs,
+                                        interpolate_missing_data,
+                                        merge_with_chromakey)
+from utils import ensure_coords, ensure_dir, find_video_by_id, uniquify
 
 
 def select_shots_by_entity(annotation_data: pd.DataFrame,
@@ -74,11 +77,8 @@ def select_shots_by_keyword(annotation_data: pd.DataFrame,
         raise ValueError(f"Keyword {key} not found in dataframe")
 
     selected_shots = annotation_data[annotation_data['word'].str.lower().str.replace(r'[^\w\s]+', '').isin(key)]
-
     selected_shots = selected_shots[selected_shots['confidence'] >= threshold]
-
     selected_shots = add_padding_shots(annotation_data, padding_after, padding_before, selected_shots)
-
     selected_shots = selected_shots.drop_duplicates(keep='first')
     selected_shots = selected_shots.sort_index()
     selected_shots = selected_shots.reset_index(drop=True)
@@ -91,15 +91,11 @@ def select_shots_by_keyword(annotation_data: pd.DataFrame,
     return selected_shots
 
 
-## Select shots by consecutive words
-
 def select_shots_by_consecutive_words(annotation_data: pd.DataFrame,
                                       key: List[str]):
     key = [k.lower().strip() for k in key] if isinstance(key, list) else [k.lower().strip() for k in key.split(',')]
-    # turn all strings in the 'word' column of the database to lowercase and remove punctuation and spaces
     annotation_data['word'] = annotation_data['word'].str.lower().str.replace(r'[^\w\s]+', '').str.strip()
     selected_shots = pd.DataFrame()
-    # get the indexs of rows where the value of the word column matches the key
     indexes = annotation_data[annotation_data['word'].isin(key)].index.values
 
     # for each index in indexes, get the following n indexes, where n is the length of the key
@@ -202,6 +198,7 @@ def add_padding_to_consecutive_keywords(annotation_data, padding_after, padding_
         print(selected_shots)
     return selected_shots
 
+
 def extract_shots(_df: pd.DataFrame, in_dir: Path, out_dir: Path, text: str = False):
     """
     :param text:
@@ -294,7 +291,7 @@ def agnostic_merge(video_dir, output_dir):
         f"{''.join(aspect_ratio_handler + streams + concat)}"] + mapper + sync + [out_path]
     args = command + options
     subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+    
 
 def render_heatmap(out_dir: Path, data: pd.DataFrame, key: list, **kwargs) -> None:
     """
@@ -303,7 +300,10 @@ def render_heatmap(out_dir: Path, data: pd.DataFrame, key: list, **kwargs) -> No
     :keyword resolution: tuple(width, height)
     :return: None
     """
+    print(data)
+
     data = data[data['object_name'].isin(key)]
+    print(data)
     res = (1920, 1080) if kwargs.get('resolution') is None else kwargs.get('resolution')
     data.fillna(0, inplace=True)
 
@@ -314,9 +314,71 @@ def render_heatmap(out_dir: Path, data: pd.DataFrame, key: list, **kwargs) -> No
     img = img / img.max()
     img[0:res[1], 0:res[0], 3] = 1
 
+    from scipy.ndimage.filters import gaussian_filter
+    img = gaussian_filter(img, sigma=5)
+
+    from matplotlib.colors import LinearSegmentedColormap
+    cmap = LinearSegmentedColormap.from_list("", ["blue", "red"])
+    video_id, object_name = data['id'].iat[0], data['object_name'].iat[0]
+    out_path = out_dir / f"{video_id}_{object_name}.png"
+    plt.imshow(img, cmap=cmap)
+    plt.imsave(uniquify(out_path.as_posix()), img, cmap=cmap)
+
+
+def berensham(x1, y1, x2, y2):
+    dx = abs(x2 - x1)
+    dy = abs(y2 - y1)
+    sx = 1 if x1 < x2 else -1
+    sy = 1 if y1 < y2 else -1
+    err = dx - dy
+    while True:
+        yield x1, y1
+        if x1 == x2 and y1 == y2:
+            break
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x1 += sx
+        if e2 < dx:
+            err += dx
+            y1 += sy
+
+
+def render_traces(out_dir: Path, data: pd.DataFrame, key: list, **kwargs) -> None:
+    """
+    :param data: DataFrame with data to plot
+    :param out_dir: folder where to save the traces
+    :keyword resolution: tuple(width, height)
+    :return: None
+    """
+    print(list(data))
+    data = data[data['object_name'].isin(key)]
+    res = (1920, 1080) if kwargs.get('resolution') is None else kwargs.get('resolution')
+    data.fillna(0, inplace=True)
+    img = np.zeros((res[1], res[0], 4), dtype=np.uint)
+
+    # we need to cluster data by obj_id in order to follow the same object troughout the video
+    data = data.groupby('object_id').apply(lambda x: x.sort_values('time_seconds'))
+        
+    # since centroids's positions are not guaranteed to be continuous, we need tro draw a line from point 'n' to point 'n+1'
+    # we will use Bresenham's line algorithm to do so 
+    for _, group in data.groupby('object_id'):
+        for i in range(len(group)-1):
+            left, top, right, bottom = ensure_coords(group['left'].iloc[i], group['top'].iloc[i], group['right'].iloc[i], group['bottom'].iloc[i])
+            centroid = (int((left + right) / 2 * res[0]), int((top + bottom) / 2 * res[1]))
+            n_left, n_top, n_right, n_bottom = ensure_coords(group['left'].iloc[i+1], group['top'].iloc[i+1], group['right'].iloc[i+1], group['bottom'].iloc[i+1])
+            next_centroid = (int((n_left + n_right) / 2 * res[0]), int((n_top + n_bottom) / 2 * res[1]))
+            for x, y in berensham(centroid[0], centroid[1], next_centroid[0], next_centroid[1]):
+                img[(y-5):(y+5), (x-5):(x), 0:3] += 1
+    
+    img = img / img.max()
+    img[0:res[1], 0:res[0], 3] = 1
+
     video_id, object_name = data['id'].iat[0], data['object_name'].iat[0]
     out_path = out_dir / f"{video_id}_{object_name}.png"
     plt.imsave(uniquify(out_path.as_posix()), img)
+    print(f"Rendered trace for {video_id} {object_name}")
+    return None
 
 
 def extract_object_thumbnails(in_dir: Path, out_dir: Path, data: pd.DataFrame, key: list) -> None:

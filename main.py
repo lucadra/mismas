@@ -1,6 +1,7 @@
 import enquiries
 
-from project import ensure_mismas, project_dir_handler, download_handler, report_handler, analysis_handler, edit_handler
+from project import (analysis_handler, download_handler, edit_handler,
+                     ensure_mismas, project_dir_handler, report_handler)
 
 ACTIONS = {
     '[>] Generate Report': report_handler,

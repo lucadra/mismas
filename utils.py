@@ -3,9 +3,12 @@ import re
 import subprocess
 from functools import reduce
 from pathlib import Path
-
+import string
 import numpy as np
-
+import socket
+import webbrowser
+import http.server
+import shutil
 
 def get_filename(_path):
     return os.path.basename(_path).split('.')[0]
@@ -92,6 +95,59 @@ def ensure_even(n: int):
 
 def map_to_range(n, domain, range):
     return range[0] + (n - domain[0]) * (range[1] - range[0]) / (domain[1] - domain[0])
+
+
+def sanitize_video_title(title: str, max_len: int = 26) -> str:
+    path = Path(title.strip())
+    path = path.with_name(re.sub(r'\s+', '-', path.name))
+    path = path.with_name(path.name.replace('.', ''))
+    valid_chars = f"-_.{string.ascii_letters}{string.digits}"
+    new_name = ''.join(c for c in path.stem if c in valid_chars)
+    new_name = re.sub(r'-+', '-', new_name)
+    new_name = new_name.lstrip('-')
+    path = path.with_stem(new_name)
+    if len(path.name) > max_len:
+        extension = path.suffix
+        path = path.with_name(path.name[:max_len-len(extension)-1] + extension)
+    return path.name
+
+
+def copy_visualiser_dir(project_dir, visualiser_name):
+    visualiser_source = Path(f'visualisers/{visualiser_name}')
+    visualiser_dest = project_dir / visualiser_name
+    shutil.copytree(visualiser_source, visualiser_dest, dirs_exist_ok=True)
+    shutil.copy(project_dir / 'youtube_report.csv', visualiser_dest / 'data')
+    return visualiser_dest
+
+
+class NoCacheHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
+
+def serve_directory(dir_path) -> None:
+    port = 8000
+    while True:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('localhost', port))
+                s.listen(1)
+                break
+        except OSError:
+            port += 1
+
+    
+
+    print(f"Serving at http://localhost:{port}, press Ctrl+C to stop")
+
+    os.chdir(dir_path)
+    ## No-Cache headers are needed to avoid loading cached files from another run
+    httpd = http.server.HTTPServer(('localhost', port), NoCacheHTTPRequestHandler)
+    webbrowser.open(f'http://localhost:{port}')
+    httpd.serve_forever()
 
 
 #####################################GRAVEYARD############################################

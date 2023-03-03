@@ -1,3 +1,5 @@
+import concurrent.futures
+import re
 import subprocess
 from pathlib import Path
 
@@ -5,121 +7,157 @@ import pandas as pd
 import spacy
 from tqdm import tqdm
 
-from utils import find_video_by_id
+import analysis
+from utils import copy_visualiser_dir, find_video_by_id, serve_directory
 
-project_dir = Path("/home/luca/mismas/J6_FOX")
-data = pd.read_csv('/home/luca/mismas/J6_FOX/data/transcription/merged.csv')
-
-en = spacy.load('en_core_web_sm', disable=['parser', 'ner'])
+en = spacy.load("en_core_web_trf")
 stopwords = en.Defaults.stop_words
+
+## TODO: Fix this, if i do i'll probably be able to rid of the trf model and go back to web_sm
+## Big issue here is that we need a complete continuous text to get good results
+## from stemming, so i will need to find a way to feed it the whole text and
+## then match stemmed words to the original ones
 
 
 def extract_reelchart_frames(data: pd.DataFrame, project_dir: Path, segments=20):
-    clip_data_groups = data.groupby('id')
-    in_dir = project_dir / 'download'
-    out_dir = project_dir / 'reelchart_images'
-    out_dir.mkdir(exist_ok=True)
-    for id in data['id'].unique():
-        clip_data = clip_data_groups.get_group(id)
-        clip_duration = clip_data.iloc[-1]['end_sec'] - clip_data.iloc[0]['start_sec']
+    in_dir = project_dir / "download"
+    out_dir = project_dir / "reelchart" / "img"
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    clip_data_groups = data.groupby("id")
+    commands = []
+
+    for id, clip_data in clip_data_groups:
+        clip_duration = clip_data.iloc[-1]["end_sec"] - clip_data.iloc[0]["start_sec"]
         segment_duration = clip_duration / segments
         timestamps = [segment_duration * i for i in range(segments)]
         video = find_video_by_id(id, in_dir)
-        for i, timestamp in enumerate(timestamps):
-            out_path = out_dir / f"{id}_{i}.jpg"
-            command = ["ffmpeg", "-ss", str(timestamp), "-i", video, "-vframes", "1", "-y", out_path]
-            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            out_path = out_dir / f"{id}_{i}.gif"
-            command = ["ffmpeg", "-ss", str(timestamp), "-t", str(segment_duration), "-i", video, "-vf",
-                       "fps=12,scale=320:-1:flags=lanczos", "-y", out_path]
-            subprocess.run(command)
+
+        commands.extend(
+            [
+                [
+                    "ffmpeg",
+                    "-ss",
+                    str(timestamp),
+                    "-i",
+                    str(video),
+                    "-vf",
+                    "scale=-1:100,format=yuv420p",
+                    "-vframes",
+                    "1",
+                    "-y",
+                    str(out_dir / f"{id}_{i}.jpg"),
+                ]
+                for i, timestamp in enumerate(timestamps)
+            ]
+        )
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(
+                subprocess.run,
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+            for command in commands
+        ]
+
+        for future in tqdm(
+            concurrent.futures.as_completed(futures),
+            desc="Processing frames",
+            total=len(futures),
+        ):
+            future.result()
 
 
-def make_reelchart_table(data: pd.DataFrame, project_dir: Path, segments=20):
-    # check if 'joe' and 'biden' are in the word column, if they are, print a message
-    if 'joe' in data['word'].unique() and 'biden' in data['word'].unique():
-        print("Joe Biden is in the data in line 34")
+def process_word(word: str) -> str:
+    if not word:
+        return ""
+    doc = en(word)
+    if doc[0].pos_ != "PROPN":
+        word = doc[0].lemma_
+    if word in stopwords:
+        return ""
+    word = re.sub(r"[.,?!;:]", "", word.lower())
+    return "" if word == "i" else word
 
-    clip_data_groups = data.groupby('id')
-    in_dir = project_dir / 'download'
-    out_dir = project_dir / 'data'
-    data = data.assign(word=data['word'].str.lower())
-    if 'joe' in data['word'].unique() and 'biden' in data['word'].unique():
-        print("Joe Biden is in the data in line 41")
 
+def process_clip(clip_data, id, timestamps, segment_duration, data_out):
+    for i, timestamp in enumerate(timestamps):
+        segment_data = clip_data[
+            (clip_data["start_sec"] >= timestamp)
+            & (clip_data["end_sec"] <= timestamp + segment_duration)
+        ]
+        for _, row in segment_data.iterrows():
+            datum = {
+                "id": id,
+                "segment": i,
+                "word": row["word"],
+                "start_sec": row["start_sec"],
+            }
+            data_out.append(datum)
+
+
+def make_reelchart_table_with_reference(
+    data: pd.DataFrame, segments=20
+) -> pd.DataFrame:
     tqdm.pandas()
-    # lemmatize the words, keep proper nouns
-    data['word'] = data['word'].progress_apply(lambda x: en(x)[0].lemma_ if en(x)[0].pos_ != 'PROPN' else x)
-    if 'joe' in data['word'].unique() and 'biden' in data['word'].unique():
-        print("Joe Biden is in the data in line 47")
-    data = data.query('word not in @stopwords')
-    if 'joe' in data['word'].unique() and 'biden' in data['word'].unique():
-        print("Joe Biden is in the data in line 50")
-    data = data.assign(word=data['word'].str.lower())
-    if 'joe' in data['word'].unique() and 'biden' in data['word'].unique():
-        print("Joe Biden is in the data in line 53")
-    pbar = tqdm(total=len(data['id'].unique()), desc="Building reelchart table", unit="clip")
+    data["word"] = data["word"].progress_apply(process_word)
+    data = data.dropna()
+    clip_data_groups = data.groupby("id")
+
+    pbar = tqdm(
+        total=len(data["id"].unique()),
+        desc="Building reelchart table",
+        unit="clip",
+        smoothing=0.1,
+    )
     data_out = []
-    for id in data['id'].unique():
 
-        clip_data = clip_data_groups.get_group(id)
-        clip_duration = clip_data.iloc[-1]['end_sec'] - clip_data.iloc[0]['start_sec']
-        segment_duration = clip_duration / segments
-        timestamps = [segment_duration * i for i in range(segments)]
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        for id in data["id"].unique():
+            clip_data = clip_data_groups.get_group(id)
+            clip_duration = (
+                clip_data.iloc[-1]["end_sec"] - clip_data.iloc[0]["start_sec"]
+            )
+            segment_duration = clip_duration / segments
+            timestamps = [segment_duration * i for i in range(segments)]
+            futures.append(
+                executor.submit(
+                    process_clip, clip_data, id, timestamps, segment_duration, data_out
+                )
+            )
 
-        for i, timestamp in enumerate(timestamps):
-            segment_data = clip_data[
-                (clip_data['start_sec'] >= timestamp) & (clip_data['end_sec'] <= timestamp + segment_duration)]
-            words_all = data['word'].unique()
-            for word in words_all:
-                count = segment_data[segment_data['word'] == word].shape[0]
-                datum = {'id': id, 'segment': i, 'word': word, 'count': count}
-                data_out.append(datum)
-        pbar.update(1)
+        for future in concurrent.futures.as_completed(futures):
+            pbar.update(1)
+            future.result()
 
+    data_out = [datum for datum in data_out if datum["word"]]
     return pd.DataFrame(data_out)
 
 
-def make_reelchart_table_with_reference(data: pd.DataFrame, project_dir: Path, segments=20):
-    # check if 'joe' and 'biden' are in the word column, if they are, print a message
+def serve_reelchart(project_dir: Path):
+    data_path = project_dir / "data" / "transcription" / "merged.csv"
 
-    in_dir = project_dir / 'download'
-    out_dir = project_dir / 'data'
-    tqdm.pandas()
-    # lemmatize the words, keep proper nouns
-    data['word'] = data['word'].progress_apply(lambda x: en(x)[0].lemma_ if en(x)[0].pos_ != 'PROPN' else x)
-    data = data.query('word not in @stopwords')
-    ## remove punctuation
-    data['word'] = data['word'].progress_apply(
-        lambda x: x.replace('.', '').replace(',', '').replace('?', '').replace('!', '').replace(';', '').replace(':',
-                                                                                                                 ''))
-    ## select all words but 'i'
-    data = data.assign(word=data['word'].str.lower())
-    data = data[data['word'] != 'i']
-    clip_data_groups = data.groupby('id')
+    try:
+        data = pd.read_csv(data_path)
+    except FileNotFoundError:
+        import utils
+        print(
+            "Speech Transcription data not found, running analysis on all downloaded videos..."
+        )
+        video_ids = [utils.parse_id(v) for v in project_dir.glob("download/*.mp4")]
+        analysis.batch_annotate_from_ids(video_ids, "transcription", project_dir)
+        data = pd.read_csv(data_path)
 
-    pbar = tqdm(total=len(data['id'].unique()), desc="Building reelchart table", unit="clip", smoothing=0.1)
-    data_out = []
+    visualiser_name = "reelchart"
+    reelchart_dest = copy_visualiser_dir(project_dir, visualiser_name)
 
-    for id in data['id'].unique():
-        clip_data = clip_data_groups.get_group(id)
-        clip_duration = clip_data.iloc[-1]['end_sec'] - clip_data.iloc[0]['start_sec']
-        segment_duration = clip_duration / segments
-        timestamps = [segment_duration * i for i in range(segments)]
+    reelchart_data = make_reelchart_table_with_reference(data)
+    reelchart_data.to_csv(reelchart_dest / "data" / "speech_data.csv", index=False)
+    extract_reelchart_frames(data, project_dir)
 
-        for i, timestamp in enumerate(timestamps):
-            segment_data = clip_data[
-                (clip_data['start_sec'] >= timestamp) & (clip_data['end_sec'] <= timestamp + segment_duration)]
-            for _, row in segment_data.iterrows():
-                datum = {'id': id, 'segment': i, 'word': row['word'], 'start_sec': row['start_sec']}
-                data_out.append(datum)
-        pbar.update(1)
-
-    return pd.DataFrame(data_out)
-
-
-pomergigio = make_reelchart_table_with_reference(data, project_dir)
-# pomergigio.to_csv('/home/luca/mismas/BBC News/data/reelchart_table.csv', index=False)
-# pomergiorgio = pomergigio[pomergigio['count'] > 0]
-pomergigio.to_csv('/home/luca/mismas/J6_FOX/data/reelchart_table_referenced.csv', index=False)
-extract_reelchart_frames(data, project_dir)
+    serve_directory(reelchart_dest)

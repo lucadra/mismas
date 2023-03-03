@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script src="utils.js"></script>
+    <script src="main.js"></script>
+  </head>
+  <body>
+    <div id="header-container">
+      <div id="header">
+        <div id="show-titles">Show Titles <span class="material-symbols-outlined">chevron_right</span></div>
+        <div id="word-selection" style="z-index: 100;">
+          <div id="selected-words"></div>
+          <div id="search-container" style="z-index: 100;">
+            <div id="search-wrapper">
+              <input id="search-input" type="text" placeholder="Search for a word">
+              <button id="search-button">
+                <span class="material-symbols-outlined">search</span>
+              </button>
+            </div>
+            <div id="search-results" style="display: none; z-index: 100; position: absolute; top: 64px;"></div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+    <div id="main"></div>
+  </body>
+</html>
