@@ -5,7 +5,7 @@ from datetime import timedelta
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-
+import pprint
 
 def format_time(in_time):
     return str(timedelta(seconds=in_time / 1000))
@@ -19,11 +19,10 @@ def get_playback_heatmarkers(video_index):
         if script.text.startswith('var ytInitialData'):
             response_json = re.sub(r'^.*?{', '{', script.text).replace(';', '')
             response_dict = json.loads(response_json)
+            
 
             try:
-                overlays = response_dict['playerOverlays']['playerOverlayRenderer']['decoratedPlayerBarRenderer'][
-                    'decoratedPlayerBarRenderer']['playerBar']['multiMarkersPlayerBarRenderer']['markersMap'][0][
-                    'value']['heatmap']['heatmapRenderer']['heatMarkers']
+                overlays = response_dict['playerOverlays']['playerOverlayRenderer']['decoratedPlayerBarRenderer']['decoratedPlayerBarRenderer']['playerBar']['multiMarkersPlayerBarRenderer']['markersMap'][-1]['value']['heatmap']['heatmapRenderer']['heatMarkers']
             except KeyError:
                 print(f'The video "{b.title.text}" has no playback heatmarkers')
                 break

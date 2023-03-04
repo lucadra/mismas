@@ -56,6 +56,7 @@ def extract_playback_frames(project_dir: Path, data: pd.DataFrame):
 
 
 def serve_momentmap(project_dir: Path):
+    print("momentmap")
     data_path = project_dir / "data" / "playback" / "merged.csv"
 
     try:
@@ -64,7 +65,7 @@ def serve_momentmap(project_dir: Path):
         import utils
 
         print("Playback data not found, running analysis on all downloaded videos...")
-        video_ids = [utils.parse_id(v) for v in project_dir.glob("download/*.mp4")]
+        video_ids = [utils.parse_id(v.stem) for v in project_dir.glob("download/*.mp4")]
         analysis.most_replayed(video_ids, project_dir)
         data = pd.read_csv(data_path)
 

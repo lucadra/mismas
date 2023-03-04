@@ -10,22 +10,22 @@ function sortRows(option, main) {
     case "date":
       main
         .selectAll(".row")
-        .sort((a, b) => d3.ascending(new Date(a[2].date), new Date(b[2].date)));
+        .sort((a, b) => d3.descending(new Date(a[2].date), new Date(b[2].date)));
       break;
     case "likes":
       main
         .selectAll(".row")
-        .sort((a, b) => d3.ascending(a[2].likes, b[2].likes));
+        .sort((a, b) => d3.descending(+a[2].likes, +b[2].likes));
       break;
     case "views":
       main
         .selectAll(".row")
-        .sort((a, b) => d3.ascending(a[2].views, b[2].views));
+        .sort((a, b) => d3.descending(+a[2].views, +b[2].views));
       break;
     case "comments":
       main
         .selectAll(".row")
-        .sort((a, b) => d3.ascending(a[2].comments || 0, b[2].comments || 0));
+        .sort((a, b) => d3.descending(+a[2].comments || 0, +b[2].comments || 0));
       break;
   }
 }

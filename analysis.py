@@ -13,7 +13,7 @@ from tqdm import tqdm
 from playback_scraper import get_playback_heatmarkers
 from utils import check_category, ensure_coords, parse_id, seconds_to_string
 
-os.environ['GOOGLE_APPLICATION_CREDENTIALS'] =  next(Path('credentials').glob('*.json'))
+os.environ['GOOGLE_APPLICATION_CREDENTIALS'] =  next(Path('credentials').glob('*.json')).as_posix()
 
 class VideoIntelligenceRequest():
 
@@ -148,7 +148,6 @@ def parse_object_tracking_data(data: dict) -> pd.DataFrame:
     :param data: data returned from the Video Intelligence API
     :return: dataframe of object tracking data
     """
-    json.dump(data, open('object_tracking_data.json', 'w'), indent=4)
     objects = []
     data = data['annotationResults'][0]['objectAnnotations']
     for item in data:

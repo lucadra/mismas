@@ -166,7 +166,7 @@ def edit_handler(project_dir: Path) -> None:
                                        'Generate Object Tracking Mosaic',
                                        'Explore Object Tracking data',
                                        'Explore Speech Transcription data',
-                                       'Explore Playback Data data',
+                                       'Explore Playback data',
                                        ])
 
     if choice == 'Extract Shots':

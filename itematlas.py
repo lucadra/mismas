@@ -252,7 +252,7 @@ def serve_itematlas(project_dir: Path):
     except FileNotFoundError:
         import utils
         print("Object Tracking data not found, running analysis on all downloaded videos...")
-        video_ids = [utils.parse_id(v) for v in project_dir.glob('download/*.mp4')]
+        video_ids = [utils.parse_id(v.stem) for v in project_dir.glob('download/*.mp4')]
         analysis.batch_annotate_from_ids(video_ids, 'object_tracking', project_dir)
         data = pd.read_csv(data_path)
 

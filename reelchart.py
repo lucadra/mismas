@@ -149,7 +149,7 @@ def serve_reelchart(project_dir: Path):
         print(
             "Speech Transcription data not found, running analysis on all downloaded videos..."
         )
-        video_ids = [utils.parse_id(v) for v in project_dir.glob("download/*.mp4")]
+        video_ids = [utils.parse_id(v.stem) for v in project_dir.glob("download/*.mp4")]
         analysis.batch_annotate_from_ids(video_ids, "transcription", project_dir)
         data = pd.read_csv(data_path)
 
