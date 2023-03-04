@@ -336,7 +336,7 @@ def edit_handler(project_dir: Path) -> None:
     elif choice == 'Explore Object Tracking data':
         serve_itematlas(project_dir)
 
-    elif choice == 'Explore Speech Transctiption data':
+    elif choice == 'Explore Speech Transcription data':
         serve_reelchart(project_dir)
 
     elif choice == 'Explore Playback data':
