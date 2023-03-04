@@ -103,7 +103,7 @@ def process_clip(clip_data, id, timestamps, segment_duration, data_out):
 def make_reelchart_table_with_reference(
     data: pd.DataFrame, segments=20
 ) -> pd.DataFrame:
-    tqdm.pandas()
+    tqdm.pandas(desc="Lemmatising words", unit="word", smoothing=0.1)
     data["word"] = data["word"].progress_apply(process_word)
     data = data.dropna()
     clip_data_groups = data.groupby("id")
