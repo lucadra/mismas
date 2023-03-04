@@ -103,6 +103,7 @@ function handleDragDrop(collection) {
 
 d3.csv("data/object_data.csv", (d) => d).then(function (data) {
   const root = d3.select("#showcase");
+  const spinner = d3.select("#spinner");
 
   let groups = d3
     .groups(data, (d) => d.object_name)
@@ -125,9 +126,11 @@ d3.csv("data/object_data.csv", (d) => d).then(function (data) {
     text.append("h2").text(d.objectsName);
     let chev = text
       .append("p")
-      .html('<span class="material-symbols-outlined">chevron_right</span>');
+      .html('<span class="material-symbols-outlined">chevron_right</span>')
+      .style("cursor", "pointer");
 
     appendObjectsLandscape(d, group);
+    spinner.style("display", "none");
 
     let scrollBox = group
       .append("div")
