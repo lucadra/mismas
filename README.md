@@ -103,9 +103,9 @@ If you prefer to install the library manually, you can do so downloading an FFmp
 To download the code in this repository and install all required dependecies, you can run one of the following commands based on your operating system:
 
 ##### MacOS and Debian
-`git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv/bin/python main.py`
+```git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv/bin/python main.py```
 ##### Windows
-`git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv\Scripts\python.exe main.py`
+```git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv\Scripts\python.exe main.py```
 
 The commands above will download the repository and run the setup file **setup.py**, which will create a virtual environment and download the required dependencies. Alternatively, the code can be downloaded manually from this page and the setup can be executed by opening a terminal window inside the downloaded folder and running the following command:
 
