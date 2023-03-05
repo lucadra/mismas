@@ -1,5 +1,5 @@
 import enquiries
-
+import os
 from project import (analysis_handler, download_handler, edit_handler,
                      ensure_mismas, project_dir_handler, report_handler)
 
@@ -12,6 +12,7 @@ ACTIONS = {
 
 
 def main():
+    os.system('cls' if os.name == 'nt' else 'clear')
     print('Welcome to MISMAS')
     mismas_dir = ensure_mismas()
     project_dir = project_dir_handler(mismas_dir)

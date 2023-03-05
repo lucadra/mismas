@@ -2,13 +2,19 @@ import concurrent.futures
 import re
 import subprocess
 from pathlib import Path
-
+import os
 import pandas as pd
 import spacy
 from tqdm import tqdm
 
 import analysis
 from utils import copy_visualiser_dir, find_video_by_id, serve_directory
+
+try:
+    spacy.load('en_core_web_trf')
+except OSError:
+    subprocess.run(['venv/bin/python', '-m', 'spacy', 'download', 'en_core_web_trf'])
+    os.system('cls' if os.name == 'nt' else 'clear')
 
 en = spacy.load("en_core_web_trf")
 stopwords = en.Defaults.stop_words
