@@ -63,21 +63,31 @@ A package manager is included in most GNU/Linux distributions by default. To ins
 Window's package manager is called Chocolatey, to install it:
  1. Open the Windows PowerShell as an administrator. You can do this by right-clicking on the Windows Start menu icon and selecting "Windows PowerShell (Admin)" from the context menu.
  2. Run the following command to allow PowerShell to run scripts:
-```Set-ExecutionPolicy Bypass -Scope Process -Force```
+```
+Set-ExecutionPolicy Bypass -Scope Process -Force
+```
  3. Run the following command to install Chocolatey:
-```iwr https://chocolatey.org/install.ps1 -UseBasicParsing | iex`
+```
+iwr https://chocolatey.org/install.ps1 -UseBasicParsing | iex
+```
  4. Once the installation is complete, run the following command to verify that Chocolatey is installed:
-```choco```
+```
+choco
+```
  This command should display the Chocolatey version number and a list of available commands.
 
 ##### MacOS
 MacOS's package manager is called Homebrew (often abbreviated as brew), to install it:
 1.  Open the Terminal application. You can find it in the Applications/Utilities folder or by using Spotlight Search (Command + Space) and searching for "Terminal".
 2.  Run the following command in the Terminal to install Homebrew:
-```/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"```
+```
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 3. The installation process will ask for your password to grant permission to install Homebrew. Enter your macOS user account password and press Enter.
 4. Once the installation is complete, run the following command to verify that Homebrew is installed:
-```brew --version```
+```
+brew --version
+```
 This command should display the Homebrew version number.
 
 
@@ -85,14 +95,22 @@ This command should display the Homebrew version number.
 If you already have a package manager installed, you can run one of the following commands based on your operating system:
 
 ##### Windows
-```choco install ffmpeg```
+```
+choco install ffmpeg
+```
 ##### MacOS
-```brew install ffmpeg```
+```
+brew install ffmpeg
+```
 ##### Debian/Ubuntu
-```sudo apt install ffmpeg```
+```
+sudo apt install ffmpeg
+```
 
 To verify the library has been correctly installed, you can type
-```ffmpeg -version```
+```
+ffmpeg -version
+```
 If the installation was successful, the command will display version information for the installed FFmpeg release. 
 
 If you prefer to install the library manually, you can do so downloading an FFmpeg's release from the official website' [download page](https://ffmpeg.org/download.html) and follow one of the tutorials below:
@@ -103,12 +121,16 @@ If you prefer to install the library manually, you can do so downloading an FFmp
 To download the code in this repository and install all required dependecies, you can run one of the following commands based on your operating system:
 
 ##### MacOS and Debian
-`git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv/bin/python main.py`
+```
+git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv/bin/python main.py
+```
 ##### Windows
-`git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv\Scripts\python.exe main.py`
+```
+git clone https://github.com/lucadra/mismas.git && cd mismas && python setup.py && venv\Scripts\python.exe main.py
+```
 
 The commands above will download the repository and run the setup file **setup.py**, which will create a virtual environment and download the required dependencies. Alternatively, the code can be downloaded manually from this page and the setup can be executed by opening a terminal window inside the downloaded folder and running the following command:
 
 `python setup.py`
 
-Once the setup has been completed, Mismas can be run by launching mismas.sh, or mismas.bat if using Windows.
+Once the setup has been completed, Mismas can be run by launching **mismas.sh**, or **mismas.bat** if using Windows.
