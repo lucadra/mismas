@@ -31,9 +31,9 @@ def create_venv():
 
 
 def run_main():
-    python_executable = os.path.join('venv', 'Scripts', 'python3.exe') if os.name == 'nt' else os.path.join('venv', 'bin', 'python3')
+    python_executable = os.path.join('venv', 'Scripts', 'python.exe') if os.name == 'nt' else os.path.join('venv', 'bin', 'python3')
     print('Initialising MISMAS...')
-    subprocess.run([python_executable, 'main.py'])
+    subprocess.run([python_executable, 'main.py'], shell=True)
 
 
 if __name__ == '__main__':
